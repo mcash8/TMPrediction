@@ -100,7 +100,7 @@ def gen_NCIM():
     N = int(N[0][0])
     n_TMs = mat['n_TMs']
     n_TMs = int(n_TMs[0][0])
-    sigmasq = mat['sigmasq'][0][0] # noise parameter \sigma^2 
+    sigmasq = float(mat['sigmasq'][0][0]) # noise parameter \sigma^2 
 
     # turn into 3D array and compute the row and column marginals
     tm_tensor = np.reshape(tm_real, (N, N, n_TMs))
@@ -153,8 +153,8 @@ def gen_NCIM():
 
     TMncim = NCIM(rs, cs, Ts, sigmasq)
 
-    return TMncim, tm_real
-    
+    return TMncim, Tsparse, tm_real, mean_row, mean_col, sigmasq
+
 def MGM(num_nodes=4, mean_traffic = 100, pm_ratio = 2, spatial_var = 100, temporal_var = 0.01,
                  interval = 15, num_days = 7, print = False, plot = False): 
     
@@ -580,10 +580,11 @@ def freq_sparsify(x, K):
     
     # Compute the FFT of the mean-centered signal
     fx = np.fft.fft(x - np.mean(x))
-    
+
     # Sort the magnitude of the first half of the FFT (excluding DC component) in descending order
-    fxmag = np.abs(fx[:lx // 2])
-    indf = np.argsort(fxmag)[::-1]  # Indices of sorted magnitudes in descending order
+    mag = np.abs(fx[:lx // 2])
+    fxmag = np.sort(mag)[::-1]
+    indf = np.argsort(mag)[::-1]  # Indices of sorted magnitudes in descending order
 
     # Keep only the top K Fourier coefficients
     fs = np.zeros(lx // 2, dtype=complex)
@@ -592,22 +593,33 @@ def freq_sparsify(x, K):
     # Construct the sparse Fourier transform
     fsparse = np.zeros(lx, dtype=complex)
     fsparse[:lx // 2] = fs
-    fsparse[lx // 2] = fx[lx // 2]  # Nyquist component
-    fsparse[lx // 2 + 1:] = np.conj(fs[::-1][1:])  # Conjugate symmetry
+    fsparse[lx // 2] = np.real(fx[lx // 2])  # Nyquist component
+    fsparse[lx // 2 + 1:] = np.conj(fs[::-1][:-1])  # Conjugate symmetry, reverse and then exclude the last element
     fsparse[0] = np.sum(x)  # DC component
 
     # Compute the inverse FFT to get the sparse signal
     xs = np.real(np.fft.ifft(fsparse))
-    
+
     return xs, fsparse
 
 
 if __name__ == "__main__":
-    TM, tm_real = gen_NCIM()
 
+    # NCIM
+    TMncim, Tsparse, tm_real, mean_row, mean_col, sigmasq  = gen_NCIM()
+
+    # MGM - spatial and temporal var = sigmasq
+    mean_Tsparse = np.mean(Tsparse)
+    Tsparse = np.expand_dims(Tsparse, axis = 1)
+    mean_row = np.expand_dims(mean_row, axis = 1)
+    mean_col = np.expand_dims(mean_col, axis = 1)
+
+    TMmod_gravity, _ = modulated_gravity(mean_row,mean_col,Tsparse,sigmasq, sigmasq)
+    
     # Parameters for plotting
     dgreen = [0.05, 0.5, 0.05]  # RGB color for green
     dgrey = [0.65, 0.65, 0.65]  # RGB color for grey
+    dred = [0.8, 0.1, 0.1] # RGB color for red
     fontsize = 18
     print_figures = False  # Set to save figures or not
     paper_position = [0, 0, 14, 12]  # Ignored for Python but can set figsize
@@ -619,9 +631,10 @@ if __name__ == "__main__":
     # Plot total sum
     plt.figure(figsize=(14, 12))  # Set figure size
     plt.plot(np.sum(tm_real, axis=0), color=dgrey, linewidth=thick_line, label='Real Traffic')  # Sum over axis 0
-    plt.plot(np.sum(np.sum(TM, axis=0), axis=0), color=dgreen, label='NCIM Model')
+    plt.plot(np.sum(np.sum(TMmod_gravity, axis=0), axis=0), color=dred, label='Modulated Gravity Model')
+    plt.plot(np.sum(np.sum(TMncim, axis=0), axis=0), color=dgreen, label='NCIM Model')
     
-    n_TMs = TM.shape[2]
+    n_TMs = TMncim.shape[2]
     # Customize plot
     plt.xlim([0, n_TMs])
     plt.xlabel('$t_k$', fontsize=fontsize)  # LaTeX-style label
