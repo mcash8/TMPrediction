@@ -91,11 +91,17 @@ def NCIM(row, col, total, sigmasq):
     
     return TM
 
-def gen_NCIM(): 
+def gen_NCIM(data = False): 
 
     mat = scipy.io.loadmat('tm_real.mat') # dictionary
 
-    tm_real = mat['tm_real']
+    if data:
+        tm_real = mat['data']
+        tm_real = tm_real[:, :144]
+        tm_real = np.transpose(tm_real, (1,0))
+    else:
+        tm_real = mat['tm_real']
+
     N = mat['N']
     N = int(N[0][0])
     n_TMs = mat['n_TMs']
@@ -151,7 +157,10 @@ def gen_NCIM():
     Ts = np.sum(rs, axis=0)
     Ts = Ts.reshape(1, -1)
 
-    TMncim = NCIM(rs, cs, Ts, sigmasq)
+    if data:
+        TMncim = NCIM(r, c, T, sigmasq)
+    else: 
+        TMncim = NCIM(rs, cs, Ts, sigmasq)
 
     return TMncim, Tsparse, tm_real, mean_row, mean_col, sigmasq
 
